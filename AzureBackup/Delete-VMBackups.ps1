@@ -24,9 +24,9 @@ Disclaimer:
 ## Variables
 
  
-$rgName = "<resource group name>" 
-$vaultName = "<recovery services vault name>"
-$vmNamePrefix = "<prefix of vm names to be deleted>"
+$rgName = "rg-BackupDeleteTests" 
+$vaultName = "rsv-BackupDeleteTesting"
+$vmNamePrefix = "test"
 
 # change this value to true to actually stop the VM protection and delete recovery points
 $forceDelete = $false
@@ -41,12 +41,25 @@ else
 {
     # Disable soft delete for the Azure Backup Recovery Services vault
     Write-Host "Disabling soft delete on vault $vaultName" -ForegroundColor Green
-    Set-AzRecoveryServicesVaultProperty -Vault $vault.ID -SoftDeleteFeatureState Disable
+    #Set-AzRecoveryServicesVaultProperty -Vault $vault.ID -SoftDeleteFeatureState Disable
     Write-Host "Soft delete disabled for vault $vaultName" -ForegroundColor Green
+
+    Set-AzRecoveryServicesVaultContext -Vault $vault
+
+    # get list of matching items that are in soft-deleted state and reverse the delete operation
+    $containerSoftDelete = Get-AzRecoveryServicesBackupItem -BackupManagementType AzureVM -WorkloadType AzureVM -VaultId $vault.ID | Where-Object {$_.DeleteState -eq "ToBeDeleted"}
+
+    foreach ($vm in $containerSoftDelete)
+    {
+        if ($vm.Name.ToUpper().StartsWith($vmNamePrefix.ToUpper()))
+        {
+            Undo-AzRecoveryServicesBackupItemDeletion -Item $vm -VaultId $vault.ID -Force -Verbose
+        }
+    }
 
     # get list of all backup machines whose names start with the
     Write-Host "Finding backed up virtual machines with name starting with '$vmNamePrefix'" -ForegroundColor Green
-    Set-AzRecoveryServicesVaultContext -Vault $vault
+    
 
     $items = Get-AzRecoveryServicesBackupItem -BackupManagementType AzureVM -WorkloadType AzureVM `
                         -VaultId $vault.ID | Where-Object {($_.Name.Split(';')[3]).ToUpper().StartsWith($vmNamePrefix.ToUpper())}
@@ -73,6 +86,6 @@ else
 
     # Re-enable soft delete on the Recovery Sercices Vault
     Write-Host "Re-enabling soft delete on vault $vaultName" -ForegroundColor Green
-    Set-AzRecoveryServicesVaultProperty -Vault $vault.ID -SoftDeleteFeatureState Enable
+    #Set-AzRecoveryServicesVaultProperty -Vault $vault.ID -SoftDeleteFeatureState Enable
     Write-Host "Soft delete re-enabled for vault $vaultName" -ForegroundColor Green
 }
